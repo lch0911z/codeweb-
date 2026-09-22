@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ITAEWON BBQ - Bếp</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header><div class="header-container"><div class="brand"><img src="https://images.unsplash.com/photo-1544025162-d76694265947?w=100" alt="Itaewon Logo"><div class="logo">ITAEWON<span>BẾP / PHỤC VỤ</span></div></div><a class="btn-nav" href="index.html">Khách / Admin</a></div><div class="vip-status-bar"><div class="vip-status-bar-inner"><span><i class="fas fa-fire" style="color:var(--gold)"></i> Order trực tuyến</span><span id="kitchenStatus">Đang chờ order</span></div></div></header>
+<main class="main-container"><section id="kitchenView" class="page-view active content"><h2 style="color:var(--gold);margin-bottom:16px">Danh sách order</h2><div id="kitchenOrders"></div></section></main>
+<div id="printArea"></div><audio id="notificationSound" src="notification.mp3" preload="auto"></audio><div id="loginModal" class="modal"><div class="modal-card"><h3 id="loginTitle">Đăng nhập Bếp</h3><input id="passInput" type="password" placeholder="Mật khẩu"><div style="display:flex;gap:8px"><button id="loginCancel" class="btn-action gray">Hủy</button><button id="loginSubmit" class="btn-action btn-gold">Vào</button></div></div></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ITAEWON VIP - Màn Hình Bếp Auto-Print</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyYOUR_KEY_HERE",
+            authDomain: "itaewon-pos.firebaseapp.com",
+            databaseURL: "https://itaewon-pos-default-rtdb.firebaseio.com",
+            projectId: "itaewon-pos",
+            storageBucket: "itaewon-pos.app照.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abc123def"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        window.db = db; window.dbRef = ref; window.dbOnValue = onValue; window.dbRemove = remove;
+    </script>
+</head>
+<body style="padding: 20px;">
+
+    <header style="margin-bottom: 20px;">
+        <div class="header-container">
+            <div class="brand-logo-box">
+                <div class="logo-text"><i class="fas fa-fire"></i> KITCHEN MONITOR <span>TỰ ĐỘNG IN BILL</span></div>
+            </div>
+            <a href="index.html" class="btn-nav">Về trang chủ</a>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div style="width: 100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="color:var(--gold-primary);"><i class="fas fa-concierge-bell"></i> Danh Sách Order Chờ Làm</h3>
+                <span style="font-size:0.85rem; color:#888;">(Chế độ Auto-Print K80 đang bật)</span>
+            </div>
+            <div id="kitchenOrders"></div>
+        </div>
+    </div>
+
+    <div id="printArea"></div>
+
+    <script>
+        let rawOrders = {};
+        let previousKeys = [];
+
+        window.onload = function() {
+            window.dbOnValue(window.dbRef(window.db, 'orders'), (snapshot) => {
+                rawOrders = snapshot.val() || {};
+                const currentKeys = Object.keys(rawOrders);
+
+                // Phát hiện ĐƠN HÀNG MỚI từ khách
+                const newKeys = currentKeys.filter(k => !previousKeys.includes(k));
+                
+                renderOrders(rawOrders);
+
+                if (newKeys.length > 0 && previousKeys.length > 0) {
+                    const latestKey = newKeys[newKeys.length - 1];
+                    // 1. Tự động in bill ngay
+                    printOrder(latestKey);
+                }
+
+                previousKeys = currentKeys;
+            });
+        };
+
+        function renderOrders(data) {
+            const container = document.getElementById('kitchenOrders');
+            if (Object.keys(data).length === 0) {
+                container.innerHTML = '<p style="color:#888; text-align:center; margin-top:40px;">Chưa có món nào được gọi...</p>';
+                return;
+            }
+
+            container.innerHTML = Object.keys(data).reverse().map(key => {
+                const order = data[key];
+                return `
+                <div class="box-card" style="border-left:5px solid var(--gold-primary);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <b style="color:var(--gold-primary); font-size:1.2rem;">${order.table}</b>
+                        <small style="color:#888;">${order.time}</small>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-action btn-print" onclick="printOrder('${key}')"><i class="fas fa-print"></i> In lại</button>
+                            <button class="btn-action btn-gold" onclick="finishOrder('${key}')"><i class="fas fa-check"></i> Xong</button>
+                        </div>
+                    </div>
+                    <ul style="margin: 12px 0 0 20px; font-size:0.95rem;">
+                        ${order.items.map(i => `<li>${i.name} x <b style="color:var(--gold-primary); font-size:1.1rem;">${i.qty}</b></li>`).join('')}
+                    </ul>
+                </div>
+            `}).join('');
+        }
+
+        function printOrder(key) {
+            const order = rawOrders[key];
+            if(!order) return;
+
+            document.getElementById('printArea').innerHTML = `
+                <div class="bill-title">ITAEWON VIP - PHIẾU BẾP</div>
+                <div class="bill-table">${order.table.toUpperCase()}</div>
+                <div style="font-size:12px; margin-bottom:8px;">Thời gian: ${order.time}</div>
+                <div style="border-top:1px dashed #000; padding-top:6px;">
+                    ${order.items.map(i => `
+                        <div class="bill-item">
+                            <span>${i.name}</span>
+                            <span>x${i.qty}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            window.print();
+        }
+
+        function finishOrder(key) {
+            window.dbRemove(window.dbRef(window.db, `orders/${key}`));
+        }
+    </script>
+</body>
+</html>
+<!-- Bổ sung thẻ audio vào kitchen.html -->
+<audio id="orderSound" src="notification.mp3" preload="auto"></audio>
+
+<script>
+    // Bổ sung phát âm thanh khi có newKeys (đơn mới)
+    if (newKeys.length > 0 && previousKeys.length > 0) {
+        const latestKey = newKeys[newKeys.length - 1];
+        
+        // 1. Phát tiếng chuông báo bếp
+        const sound = document.getElementById('orderSound');
+        if (sound) {
+            sound.play().catch(e => console.log('Chờ tương tác để phát âm thanh'));
+        }
+
+        // 2. Tự động in bill K80
+        printOrder(latestKey);
+    }
+</script>
